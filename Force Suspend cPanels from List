@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Check if the input file is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 <accounts.txt>"
+    exit 1
+fi
+
+# Check if the input file exists
+if [ ! -f "$1" ]; then
+    echo "Error: File '$1' not found!"
+    exit 1
+fi
+
+# Loop through each line in the input file
+while IFS= read -r account; do
+    # Suspend the account
+    /usr/local/cpanel/scripts/suspendacct "$account" --force
+
+    # Check if the account suspension was successful
+    if [ $? -eq 0 ]; then
+        echo "Account '$account' suspended successfully."
+    else
+        echo "Error: Failed to suspend account '$account'."
+    fi
+done < "$1"
+
+echo "All accounts listed in '$1' have been suspended."
