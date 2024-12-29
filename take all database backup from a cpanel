@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Script to download all database backups for a cPanel account
+# Ensure this script is run as the root user
+
+# Function to display usage instructions
+usage() {
+    echo "Usage: $0 <cpanel_username>"
+    exit 1
+}
+
+# Check if the cPanel username is provided
+if [ $# -ne 1 ]; then
+    usage
+fi
+
+CPANEL_USER="$1"
+
+# Backup directory on the local server
+BACKUP_DIR="/root/cpanel_db_backups/$CPANEL_USER"
+
+# Ensure the backup directory exists
+mkdir -p "$BACKUP_DIR"
+
+# List all databases associated with the cPanel user
+DATABASES=$(uapi --user="$CPANEL_USER" Mysql list_databases | grep -Po '(?<="database": ")[^"]*')
+
+if [ -z "$DATABASES" ]; then
+    echo "No databases found for user $CPANEL_USER."
+    exit 1
+fi
+
+echo "Databases found: $DATABASES"
+
+# Loop through each database and generate/download a backup
+for DB in $DATABASES; do
+    echo "Backing up database: $DB"
+
+    # Generate the backup command
+    mysqldump --single-transaction --quick --lock-tables=false "$DB" > "$BACKUP_DIR/${DB}_backup.sql"
+    
+    if [ $? -eq 0 ]; then
+        echo "Backup successful for $DB. Saved to $BACKUP_DIR/${DB}_backup.sql"
+    else
+        echo "Backup failed for $DB!"
+    fi
+done
+
+echo "All database backups for $CPANEL_USER have been completed."
