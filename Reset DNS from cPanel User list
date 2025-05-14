@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# Check if user list is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 userlist.txt"
+    exit 1
+fi
+
+USERLIST="$1"
+
+# Ensure script is run as root
+if [ "$EUID" -ne 0 ]; then
+    echo "❌ Please run as root"
+    exit 1
+fi
+
+# Loop through each user
+while IFS= read -r user; do
+    if [ ! -f "/var/cpanel/users/$user" ]; then
+        echo "⚠️ User '$user' not found. Skipping."
+        continue
+    fi
+
+    echo "🔍 Collecting domains for user: $user"
+
+    # Initialize domain list
+    DOMAIN_LIST=()
+
+    # Get main domain
+    MAIN_DOMAIN=$(grep "^DNS=" /var/cpanel/users/$user | cut -d= -f2)
+    [ -n "$MAIN_DOMAIN" ] && DOMAIN_LIST+=("$MAIN_DOMAIN")
+
+    # Addon domains
+    ADDON_DOMAINS=$(awk -F= '/^DNS[0-9]+=/ { print $2 }' /var/cpanel/users/$user)
+    for domain in $ADDON_DOMAINS; do DOMAIN_LIST+=("$domain"); done
+
+    # Parked domains (aliases)
+    PARKED_FILE="/var/cpanel/userdata/$user/main"
+    [ -f "$PARKED_FILE" ] && {
+        PARKED_DOMAINS=$(awk '/^  - / {print $2}' "$PARKED_FILE")
+        for domain in $PARKED_DOMAINS; do DOMAIN_LIST+=("$domain"); done
+    }
+
+    # Remove duplicates
+    DOMAIN_LIST=($(echo "${DOMAIN_LIST[@]}" | tr ' ' '\n' | sort -u))
+
+    # Reset DNS zones
+    for domain in "${DOMAIN_LIST[@]}"; do
+        echo "🔁 Resetting DNS for $domain ..."
+        /usr/local/cpanel/bin/whmapi1 resetzone domain="$domain"
+        if [ $? -eq 0 ]; then
+            echo "✅ Successfully reset DNS for $domain"
+        else
+            echo "❌ Failed to reset DNS for $domain"
+        fi
+    done
+
+    echo "---------------------------------------------"
+
+done < "$USERLIST"
+
+echo "🎉 DNS reset completed for all users."
